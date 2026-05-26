@@ -2,7 +2,7 @@
 // LANDING PANEL — MARKET & PLATFORM SELECTION
 // ═══════════════════════════════════════════════════════════════════
 const selectedMarkets = new Set(['us']);
-const activePlatforms = new Set(['schwab']);
+const activePlatforms = new Set();
 
 function toggleMarket(m) {
   if (selectedMarkets.has(m)) {
@@ -91,7 +91,7 @@ function updateAnalyzeAllBtn() {
 
   let hasData = false;
   if (activePlatforms.has('schwab') && (typeof pendingLots !== 'undefined' && pendingLots)) hasData = true;
-  if (activePlatforms.has('indmoney') && ((typeof imRawFiles !== 'undefined' && imRawFiles.us.cg) ||
+  if (activePlatforms.has('indmoney') && ((typeof imRawFiles !== 'undefined' && imRawFiles.us.cg && imRawFiles.us.cg.length > 0) ||
       (typeof imInRawFiles !== 'undefined' && Object.values(imInRawFiles).some(s => s.trades && s.trades.length > 0)))) hasData = true;
   if (activePlatforms.has('zerodha') && typeof zRawFiles !== 'undefined' && Object.values(zRawFiles).some(s => s.trades.length > 0)) hasData = true;
   if (activePlatforms.has('groww') && typeof gRawFiles !== 'undefined' && Object.values(gRawFiles).some(s => s.trades.length > 0)) hasData = true;
