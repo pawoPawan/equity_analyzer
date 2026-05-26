@@ -42,7 +42,48 @@
       </div>
       <div class="lots-wrap" id="lotsWrap"></div>
       <div class="disclaimer" id="disclaimerSection" style="display:none">
-        <strong>India Tax Note:</strong> LTCG applies to holdings held &gt;24 months (12.5% post July 2024 budget, no indexation). STCG on foreign equity is taxed at your income slab rate — enter your other income above for an accurate STCG rate. For RSU: capital gain cost basis = FMV at vest (perquisite already taxed as salary). For ESPP: cost basis = Purchase FMV, not discounted price. INR gain = stock appreciation in INR + forex gain (USD/INR change). Exchange rates are fetched from RBI reference rate archive; API rates used where RBI data is unavailable. <strong>Consult a CA for ITR filing.</strong>
+        <strong>India Tax Note:</strong> LTCG applies to holdings held &gt;24 months (12.5% post July 2024 budget, no indexation). STCG on foreign equity is taxed at your income slab rate — enter your other income above for an accurate STCG rate. For RSU: capital gain cost basis = FMV at vest (perquisite already taxed as salary). For ESPP: cost basis = Purchase FMV, not discounted price. INR gain = stock appreciation in INR + forex gain (USD/INR change). Exchange rates from RBI reference rate archive. <strong>Consult a CA for ITR filing.</strong>
+      </div>
+
+      <!-- ══ Retail brokerage mode (Buy/Sell transactions from personal account) ══ -->
+      <div id="schwabRSection" style="display:none">
+        <div class="settings-panel" id="schwabRSettings">
+          <div class="settings-title">Charles Schwab — Retail Tax Settings (US Equity)</div>
+          <div class="settings-row">
+            <div class="field-grp"><label>Tax Regime</label><div class="regime-toggle"><button class="regime-btn active" id="schwabRRegimeNew" onclick="setSRRegime('new')">New</button><button class="regime-btn" id="schwabRRegimeOld" onclick="setSRRegime('old')">Old</button></div></div>
+            <div class="field-grp"><label>Other Annual Income (₹ Lakhs, after deductions)</label><input type="number" id="schwabROtherIncome" value="0" step="0.5" placeholder="e.g. 25" oninput="rerenderSchwabRetail()"></div>
+            <div class="field-grp" style="min-width:90px;max-width:120px"><label>STCG Rate %</label><input type="number" id="schwabRStcgRate" value="30" step="0.5" oninput="rerenderSchwabRetail()"></div>
+            <div class="field-grp" style="min-width:90px;max-width:120px"><label>LTCG Rate %</label><input type="number" id="schwabRLtcgRate" value="12.5" step="0.5" oninput="rerenderSchwabRetail()"></div>
+          </div>
+        </div>
+        <div class="z-consolidated" id="schwabRConsolidated"></div>
+        <div class="z-section" id="schwabRRealSection">
+          <div class="z-section-header" onclick="toggleZSection('schwabRRealBody','schwabRRealToggle','schwabRRealMeta')">
+            <span class="z-section-title">Realized Gains</span>
+            <span class="z-section-meta" id="schwabRRealMeta"></span>
+            <span class="z-toggle-btn" id="schwabRRealToggle">▼</span>
+          </div>
+          <div class="z-section-body" id="schwabRRealBody"><div id="schwabRRealCards"></div></div>
+        </div>
+        <div class="z-section" id="schwabROpenSection">
+          <div class="z-section-header" onclick="toggleZSection('schwabROpenBody','schwabROpenToggle','schwabROpenMeta')">
+            <span class="z-section-title">Open Positions</span>
+            <span class="z-section-meta" id="schwabROpenMeta"></span>
+            <span class="z-toggle-btn" id="schwabROpenToggle">▼</span>
+          </div>
+          <div class="z-section-body" id="schwabROpenBody"><div id="schwabROpenCards"></div></div>
+        </div>
+        <div class="z-section" id="schwabRIntradaySection" style="display:none">
+          <div class="z-section-header" onclick="toggleZSection('schwabRIntradayBody','schwabRIntradayToggle','schwabRIntradayMeta')">
+            <span class="z-section-title">Intraday (Same-day Buy &amp; Sell)</span>
+            <span class="z-section-meta" id="schwabRIntradayMeta"></span>
+            <span class="z-toggle-btn" id="schwabRIntradayToggle">▼</span>
+          </div>
+          <div class="z-section-body" id="schwabRIntradayBody"><div id="schwabRIntradayContent"></div></div>
+        </div>
+        <div class="disclaimer" style="margin-top:16px">
+          <strong>US Equity Tax Note (Indian Residents):</strong> LTCG = held &gt;24 months (730 days) at 12.5%, no indexation. STCG = held ≤24 months, taxed at your income slab rate. INR gain uses the RBI USD/INR rate on each individual trade date (buys use buy-date rate, sells use sell-date rate). Open positions countdown shows days to LTCG threshold. <strong>Consult a CA for ITR filing.</strong>
+        </div>
       </div>
     </div>
   </div>

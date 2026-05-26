@@ -178,7 +178,10 @@ function updateAnalyzeAllBtn() {
   }
 
   let hasData = false;
-  if (activePlatforms.has('schwab') && typeof allLots !== 'undefined' && allLots.length > 0) hasData = true;
+  if (activePlatforms.has('schwab') && (
+    (typeof allLots !== 'undefined' && allLots.length > 0) ||
+    (typeof schwabRDataReady !== 'undefined' && schwabRDataReady)
+  )) hasData = true;
   if (activePlatforms.has('indmoney') && ((typeof imRawFiles !== 'undefined' && imRawFiles.us.cg && imRawFiles.us.cg.length > 0) ||
       (typeof imInRawFiles !== 'undefined' && Object.values(imInRawFiles).some(s => s.trades && s.trades.length > 0)))) hasData = true;
   if (activePlatforms.has('zerodha') && typeof zRawFiles !== 'undefined' && Object.values(zRawFiles).some(s => s.trades.length > 0)) hasData = true;

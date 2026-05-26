@@ -83,6 +83,13 @@
         <span style="display:flex;align-items:center;gap:8px"><span class="pfup-status" id="pfupStatus_schwab"></span><span class="pfup-toggle" id="pfupToggle_schwab">▼</span></span>
       </div>
       <div class="pfup-body" id="pfupBody_schwab">
+      <div style="padding:10px 16px 8px;font-size:.75rem;color:var(--muted);border-bottom:1px solid var(--border);line-height:1.6;background:var(--canvas)">
+        <strong style="color:var(--ink)">Supported file types (auto-detected on upload):</strong>
+        <ul style="margin:4px 0 0;padding-left:18px">
+          <li><strong>Equity Awards Center CSV</strong> — RSU &amp; ESPP for any company (Nvidia, Google, Microsoft, etc.). Export from Schwab Equity Award Center → View Equity Details → Download CSV.</li>
+          <li><strong>Retail Brokerage CSV</strong> — Buy/Sell transactions from a personal Schwab brokerage account. Export from Accounts → History → select date range → Export.</li>
+        </ul>
+      </div>
       <div class="upload-section">
         <div class="upload-card" id="csvCard" onclick="document.getElementById('csvFile').click()">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>

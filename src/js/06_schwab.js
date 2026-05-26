@@ -14,25 +14,55 @@ function setFilter(f, el) {
 
 
 // ═══════════════════════════════════════════════════════════════════
-let pendingLots = null;      // CSV parsed, waiting for XLS
-let pendingXlsRates = null;  // XLS parsed, waiting for CSV
+// STATE
+// ═══════════════════════════════════════════════════════════════════
+let pendingLots       = null;   // equity awards CSV parsed, waiting for XLS
+let pendingXlsRates   = null;   // XLS parsed, waiting for CSV
+let pendingRetailTrades = null; // retail CSV parsed, waiting for XLS
+let schwabMode        = null;   // 'awards' | 'retail'
+let schwabRDataReady  = false;
+let schwabRRealized   = [];
+let schwabROpen       = {};
+let schwabRIntradayPnl = [];
+let schwabRTaxRegime  = 'new';
 
+
+// ═══════════════════════════════════════════════════════════════════
+// FILE UPLOAD HANDLERS
+// ═══════════════════════════════════════════════════════════════════
 async function handleCsvUpload(e) {
   const file = e.target.files[0];
   e.target.value = '';
   if (!file) return;
   const text = await file.text();
-  const lots = parseSchawbCSV(text);
-  if (!lots.length) { alert('No lots found in CSV. Check file format.'); return; }
 
-  // Mark CSV card ready
-  document.getElementById('csvCard').classList.add('ready');
-  document.getElementById('csvBtnLabel').textContent = '✓ ' + file.name;
-
-  if (pendingXlsRates) {
-    initWithBoth(lots, pendingXlsRates);
+  // Auto-detect: retail brokerage CSV starts with "Transactions  for account..."
+  const firstLine = text.split('\n')[0] || '';
+  if (firstLine.toLowerCase().includes('transactions') && firstLine.toLowerCase().includes('for account')) {
+    // ── Retail brokerage CSV ───────────────────────────────────────
+    const trades = parseSchawbRetailCSV(text);
+    if (!trades.length) {
+      alert('No Buy/Sell trades found in the CSV.\n\nMake sure you exported from: Accounts → History → select date range → Export.\n\nIf this is an Equity Awards CSV, the file may be in an unexpected format.');
+      return;
+    }
+    document.getElementById('csvCard').classList.add('ready');
+    document.getElementById('csvBtnLabel').textContent = '✓ ' + file.name + ' (' + trades.length + ' trade' + (trades.length !== 1 ? 's' : '') + ')';
+    if (pendingXlsRates) {
+      initWithBothRetail(trades, pendingXlsRates);
+    } else {
+      pendingRetailTrades = trades;
+    }
   } else {
-    pendingLots = lots;
+    // ── Equity Awards Center CSV ───────────────────────────────────
+    const lots = parseSchawbCSV(text);
+    if (!lots.length) { alert('No lots found in CSV. Check file format.'); return; }
+    document.getElementById('csvCard').classList.add('ready');
+    document.getElementById('csvBtnLabel').textContent = '✓ ' + file.name;
+    if (pendingXlsRates) {
+      initWithBoth(lots, pendingXlsRates);
+    } else {
+      pendingLots = lots;
+    }
   }
 }
 
@@ -49,11 +79,17 @@ async function handleXlsUpload(e) {
 
   if (pendingLots) {
     initWithBoth(pendingLots, rates);
+  } else if (pendingRetailTrades) {
+    initWithBothRetail(pendingRetailTrades, rates);
   } else {
     pendingXlsRates = rates;
   }
 }
 
+
+// ═══════════════════════════════════════════════════════════════════
+// RBI XLS PARSER
+// ═══════════════════════════════════════════════════════════════════
 // Parse the RBI HTML-as-XLS: DD/MM/YYYY → rate
 function parseRBIXls(text) {
   const doc = new DOMParser().parseFromString(text, 'text/html');
@@ -83,7 +119,12 @@ function nearestRBIRate(isoDate, xlsRates) {
   return null;
 }
 
+
+// ═══════════════════════════════════════════════════════════════════
+// EQUITY AWARDS INIT (RSU / ESPP)
+// ═══════════════════════════════════════════════════════════════════
 function initWithBoth(lots, xlsRates) {
+  schwabMode = 'awards';
   allLots = lots;
   ratesMap = {};
 
@@ -116,43 +157,84 @@ function initWithBoth(lots, xlsRates) {
   updateAnalyzeAllBtn();
 }
 
-// ── Reset filter chip + activeFilter variable ──────────────────────
-function activateFilter(f) {
-  activeFilter = f;
-  document.querySelectorAll('.chip').forEach(c => {
-    const isAll  = c.textContent.trim() === 'All Lots';
-    const isThis = (f === 'all' && isAll) || c.textContent.trim() === f;
-    c.classList.toggle('active', isThis);
-  });
-}
 
-
-function resetUpload() {
-  pendingLots = null;
-  pendingXlsRates = null;
-  allLots = [];
+// ═══════════════════════════════════════════════════════════════════
+// RETAIL BROKERAGE INIT (Buy/Sell transactions)
+// ═══════════════════════════════════════════════════════════════════
+function initWithBothRetail(trades, xlsRates) {
+  schwabMode = 'retail';
   ratesMap = {};
-  document.getElementById('csvCard').classList.remove('ready');
-  document.getElementById('xlsCard').classList.remove('ready');
-  document.getElementById('csvBtnLabel').textContent = 'Choose File';
-  document.getElementById('xlsBtnLabel').textContent = 'Choose File';
-  document.getElementById('settingsPanel').style.display = 'none';
-  document.getElementById('catSummarySection').style.display = 'none';
-  document.getElementById('summarySection').style.display = 'none';
-  document.getElementById('disclaimerSection').style.display = 'none';
-  document.getElementById('currencyToggle').style.display = 'none';
-  activateFilter('all');
-  document.getElementById('lotsWrap').innerHTML = '';
-  document.getElementById('pra_schwab').style.display = 'none';
-  checkAndMaybeGoBack();
+
+  // Build ratesMap for all trade dates
+  const tradeDates = [...new Set(trades.map(t => t.date))];
+  tradeDates.forEach(date => {
+    const found = nearestRBIRate(date, xlsRates);
+    if (found) ratesMap[date] = { rate: found.rate, source: 'rbi' };
+  });
+
+  // Today's rate
+  const todayFound = nearestRBIRate(TODAY, xlsRates);
+  if (todayFound) {
+    document.getElementById('todayINR').value = todayFound.rate.toFixed(2);
+    const imUsdRateEl = document.getElementById('imUsdRate');
+    if (imUsdRateEl && parseFloat(imUsdRateEl.value) === 84.5) {
+      imUsdRateEl.value = todayFound.rate.toFixed(2);
+    }
+    ratesMap[TODAY] = { rate: todayFound.rate, source: 'rbi' };
+  }
+
+  const fallbackRate = parseFloat(document.getElementById('todayINR').value) || 84.5;
+
+  // Convert each trade's USD price → INR using that trade's date RBI rate.
+  // This gives correct INR gain when FIFO matches buys and sells:
+  //   gain per unit (INR) = sell_price_USD × sell_date_rate − buy_price_USD × buy_date_rate
+  const tradesINR = trades.map(t => ({
+    ...t,
+    price: t.price * (ratesMap[t.date]?.rate || fallbackRate),
+  }));
+
+  // Run FIFO pipeline (same as Zerodha/Groww)
+  const { intradayPnl, deliveryTrades } = extractIntraday(tradesINR);
+  schwabRIntradayPnl = intradayPnl;
+
+  const { realized, open } = runFIFO(deliveryTrades);
+
+  // US equity: LTCG threshold = 730 days (24 months), not 365
+  schwabRRealized = realized.map(r => ({
+    ...r,
+    category: r.holdDays > 730 ? 'LTCG' : 'STCG',
+  }));
+  schwabROpen = open;
+  schwabRDataReady = true;
+
+  pendingRetailTrades = null;
+  pendingXlsRates = null;
+
+  showSchwabRetailUI();
+  rerenderSchwabRetail();
+  updateAnalyzeAllBtn();
 }
 
+
+// ═══════════════════════════════════════════════════════════════════
+// SHOW / HIDE RESULT SECTIONS
+// ═══════════════════════════════════════════════════════════════════
 function showMainUI() {
-  document.getElementById('settingsPanel').style.display = 'block';
+  document.getElementById('settingsPanel').style.display    = 'block';
   document.getElementById('catSummarySection').style.display = 'block';
-  document.getElementById('summarySection').style.display = 'block';
+  document.getElementById('summarySection').style.display   = 'block';
   document.getElementById('disclaimerSection').style.display = 'block';
-  document.getElementById('currencyToggle').style.display = '';
+  document.getElementById('currencyToggle').style.display   = '';
+  document.getElementById('schwabRSection').style.display   = 'none';
+}
+
+function showSchwabRetailUI() {
+  document.getElementById('settingsPanel').style.display    = 'none';
+  document.getElementById('catSummarySection').style.display = 'none';
+  document.getElementById('summarySection').style.display   = 'none';
+  document.getElementById('disclaimerSection').style.display = 'none';
+  document.getElementById('currencyToggle').style.display   = 'none';
+  document.getElementById('schwabRSection').style.display   = 'block';
 }
 
 function saveTodayINR() {}
@@ -166,7 +248,216 @@ function overrideRate(date, val) {
   }
 }
 
-// ── Rate table ─────────────────────────────────────────────────────
+
+// ═══════════════════════════════════════════════════════════════════
+// RESET
+// ═══════════════════════════════════════════════════════════════════
+function resetUpload() {
+  pendingLots = null;
+  pendingXlsRates = null;
+  pendingRetailTrades = null;
+  schwabMode = null;
+  schwabRDataReady = false;
+  schwabRRealized = []; schwabROpen = {}; schwabRIntradayPnl = [];
+  allLots = [];
+  ratesMap = {};
+  document.getElementById('csvCard').classList.remove('ready');
+  document.getElementById('xlsCard').classList.remove('ready');
+  document.getElementById('csvBtnLabel').textContent = 'Choose File';
+  document.getElementById('xlsBtnLabel').textContent = 'Choose File';
+  document.getElementById('settingsPanel').style.display    = 'none';
+  document.getElementById('catSummarySection').style.display = 'none';
+  document.getElementById('summarySection').style.display   = 'none';
+  document.getElementById('disclaimerSection').style.display = 'none';
+  document.getElementById('currencyToggle').style.display   = 'none';
+  document.getElementById('schwabRSection').style.display   = 'none';
+  activateFilter('all');
+  document.getElementById('lotsWrap').innerHTML = '';
+  document.getElementById('pra_schwab').style.display = 'none';
+  checkAndMaybeGoBack();
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// RETAIL BROKERAGE — PARSER
+// Format: Row1 = "Transactions  for account ...", Row2 = blank,
+//         Row3 = "Date","Action","Symbol","Description","Quantity","Price","Fees & Comm","Amount"
+//         Last row = "Transactions Total,..."
+// ═══════════════════════════════════════════════════════════════════
+function parseSchawbRetailCSV(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+  // Find the header row (contains Date, Action, Symbol columns)
+  const hdrIdx = lines.findIndex(l => {
+    const lower = l.toLowerCase();
+    return lower.includes('action') && lower.includes('symbol') &&
+           (lower.startsWith('"date"') || lower.startsWith('date,'));
+  });
+  if (hdrIdx < 0) return [];
+
+  const hdr     = parseCsvLine(lines[hdrIdx]).map(h => h.trim().toLowerCase());
+  const iDate   = hdr.indexOf('date');
+  const iAction = hdr.indexOf('action');
+  const iSym    = hdr.indexOf('symbol');
+  const iQty    = hdr.indexOf('quantity');
+  const iPrice  = hdr.indexOf('price');
+  if (iDate < 0 || iAction < 0 || iSym < 0 || iQty < 0 || iPrice < 0) return [];
+
+  // Actions to treat as buys or sells
+  const BUY_ACTIONS  = ['buy', 'buy to open', 'buy to close', 'reinvest shares'];
+  const SELL_ACTIONS = ['sell', 'sell to open', 'sell to close'];
+
+  const seen   = new Set();
+  const trades = [];
+
+  for (let i = hdrIdx + 1; i < lines.length; i++) {
+    const row    = parseCsvLine(lines[i]);
+    const action = (row[iAction] || '').trim().toLowerCase();
+    if (!action || action.startsWith('transactions total')) break;
+
+    const isBuy  = BUY_ACTIONS.some(a  => action === a);
+    const isSell = SELL_ACTIONS.some(a => action === a);
+    if (!isBuy && !isSell) continue;
+
+    const sym = (row[iSym] || '').trim();
+    if (!sym || sym === '--' || sym.toLowerCase() === 'symbol') continue;
+
+    // Date may carry an "as of" suffix: "12/16/2020 as of 12/15/2020"
+    const rawDate = (row[iDate] || '').split(' as of ')[0].trim();
+    const dateISO = mmddToISO(rawDate);
+    if (!dateISO) continue;
+
+    const qty   = Math.abs(parseFloat((row[iQty]   || '0').replace(/[$,\s]/g, '')) || 0);
+    const price = Math.abs(parseFloat((row[iPrice] || '0').replace(/[$,\s]/g, '')) || 0);
+    if (qty <= 0 || price <= 0) continue;
+
+    const dedupKey = `${sym}|${dateISO}|${isBuy ? 'buy' : 'sell'}|${qty}|${price}`;
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey);
+
+    trades.push({
+      symbol:   sym,
+      isin:     '',
+      date:     dateISO,
+      type:     isBuy ? 'buy' : 'sell',
+      qty,
+      price,   // USD — will be converted to INR in initWithBothRetail
+      fileType: 'eq',
+      dedupKey,
+    });
+  }
+
+  return trades;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// RETAIL BROKERAGE — RENDER
+// ═══════════════════════════════════════════════════════════════════
+function setSRRegime(r) {
+  schwabRTaxRegime = r;
+  document.getElementById('schwabRRegimeNew').classList.toggle('active', r === 'new');
+  document.getElementById('schwabRRegimeOld').classList.toggle('active', r === 'old');
+  rerenderSchwabRetail();
+}
+
+function rerenderSchwabRetail() {
+  if (!schwabRDataReady) return;
+
+  const ltcgRate = (parseFloat(document.getElementById('schwabRLtcgRate').value) || 12.5) / 100;
+  const stcgRate = (parseFloat(document.getElementById('schwabRStcgRate').value) || 30)   / 100;
+  const EXEMPT   = 125000; // ₹1,25,000 LTCG exemption
+
+  // ── Tax calculation ──────────────────────────────────────────────
+  let totalSTCG = 0, totalLTCG = 0;
+  schwabRRealized.forEach(r => {
+    if (r.gain > 0) {
+      if (r.category === 'LTCG') totalLTCG += r.gain;
+      else                       totalSTCG  += r.gain;
+    }
+  });
+
+  const ltcgTaxable = Math.max(totalLTCG - EXEMPT, 0);
+  const stcgTax     = Math.max(totalSTCG, 0) * stcgRate;
+  const ltcgTax     = ltcgTaxable * ltcgRate;
+
+  const otherL          = parseFloat(document.getElementById('schwabROtherIncome').value) || 0;
+  const otherINR        = otherL * 100000;
+  const slabs           = schwabRTaxRegime === 'new' ? NEW_SLABS : OLD_SLABS;
+  const intradayTotal   = schwabRIntradayPnl.reduce((s, t) => s + t.pnl, 0);
+  const intradayTax     = slabTax(otherINR + Math.max(intradayTotal, 0), slabs) - slabTax(otherINR, slabs);
+  const totalTax        = stcgTax + ltcgTax + intradayTax;
+
+  // ── Consolidated summary ─────────────────────────────────────────
+  document.getElementById('schwabRConsolidated').innerHTML = `
+    <div class="z-consolidated-grid">
+      <div class="z-con-item">
+        <div class="z-con-label">STCG (≤ 24 months)</div>
+        <div class="z-con-val">${fINR(totalSTCG, true)}</div>
+        <div class="z-con-sub">Tax: ${fINR(stcgTax, true)} @ ${(stcgRate * 100).toFixed(1)}%</div>
+      </div>
+      <div class="z-con-item">
+        <div class="z-con-label">LTCG (&gt; 24 months)</div>
+        <div class="z-con-val">${fINR(totalLTCG, true)}</div>
+        <div class="z-con-sub">Taxable: ${fINR(ltcgTaxable, true)} (₹1.25L exempt)</div>
+      </div>
+      ${intradayTotal !== 0 ? `
+      <div class="z-con-item">
+        <div class="z-con-label">Intraday P&L</div>
+        <div class="z-con-val ${intradayTotal >= 0 ? 'pos' : 'neg'}">${fINR(intradayTotal, true)}</div>
+        <div class="z-con-sub">Speculative business income</div>
+      </div>` : ''}
+      <div class="z-con-item highlight">
+        <div class="z-con-label">Total Tax Estimate</div>
+        <div class="z-con-val">${fINR(totalTax, true)}</div>
+        <div class="z-con-sub">LTCG ${(ltcgRate * 100).toFixed(1)}% + STCG slab</div>
+      </div>
+    </div>`;
+
+  // ── Realized gains ────────────────────────────────────────────────
+  const bySymbol = {};
+  schwabRRealized.forEach(r => {
+    if (!bySymbol[r.symbol]) bySymbol[r.symbol] = [];
+    bySymbol[r.symbol].push(r);
+  });
+  const symCount  = Object.keys(bySymbol).length;
+  document.getElementById('schwabRRealMeta').textContent =
+    `${schwabRRealized.length} transaction${schwabRRealized.length !== 1 ? 's' : ''} · ${symCount} symbol${symCount !== 1 ? 's' : ''}`;
+  document.getElementById('schwabRRealCards').innerHTML =
+    Object.entries(bySymbol).map(([sym, trades]) => buildRealizedCard(sym, trades, ltcgRate, stcgRate, EXEMPT)).join('');
+  document.getElementById('schwabRRealSection').style.display = schwabRRealized.length ? '' : 'none';
+
+  // ── Open positions ────────────────────────────────────────────────
+  const openEntries = Object.entries(schwabROpen);
+  const openShares  = openEntries.reduce((s, [, lots]) => s + lots.reduce((a, b) => a + b.qty, 0), 0);
+  document.getElementById('schwabROpenMeta').textContent =
+    `${openEntries.length} symbol${openEntries.length !== 1 ? 's' : ''} · ${openShares.toLocaleString()} shares`;
+  document.getElementById('schwabROpenCards').innerHTML =
+    openEntries.map(([sym, lots]) => buildOpenCard(sym, lots, false)).join('');
+  document.getElementById('schwabROpenSection').style.display = openEntries.length ? '' : 'none';
+
+  // ── Intraday ──────────────────────────────────────────────────────
+  if (schwabRIntradayPnl.length) {
+    const marginal = intradayTotal > 0 ? intradayTax / intradayTotal : getMarginalRate(otherINR + 1, slabs);
+    document.getElementById('schwabRIntradayMeta').textContent = `${schwabRIntradayPnl.length} day${schwabRIntradayPnl.length !== 1 ? 's' : ''} · ${fINR(intradayTotal, true)}`;
+    document.getElementById('schwabRIntradayContent').innerHTML = buildIntradaySection(schwabRIntradayPnl, marginal);
+    document.getElementById('schwabRIntradaySection').style.display = '';
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// EQUITY AWARDS — FILTER / RATE TABLE
+// ═══════════════════════════════════════════════════════════════════
+function activateFilter(f) {
+  activeFilter = f;
+  document.querySelectorAll('.chip').forEach(c => {
+    const isAll  = c.textContent.trim() === 'All Lots';
+    const isThis = (f === 'all' && isAll) || c.textContent.trim() === f;
+    c.classList.toggle('active', isThis);
+  });
+}
+
 function renderRateTable() {
   const tbody = document.getElementById('rateTableBody');
   const uniqueDates = [...new Set(allLots.map(l => l.dateAcquired))].sort();
@@ -177,7 +468,7 @@ function renderRateTable() {
     const info = ratesMap[date] || {};
     const src = info.source || 'est';
     const isEst = src === 'est';
-    const isLocked = src === 'rbi'; // locked once imported from RBI XLS
+    const isLocked = src === 'rbi';
     const rowStyle = isEst ? 'background:#fff8e1;' : '';
     const manualCell = isLocked
       ? `<span style="font-size:12px;color:#888">— locked (RBI)</span>`
@@ -195,7 +486,11 @@ function renderRateTable() {
 }
 
 
-// CSV PARSER — Schwab format
+// ═══════════════════════════════════════════════════════════════════
+// EQUITY AWARDS — CSV PARSER
+// Handles both "EMPLOYEE STOCK PURCHASE PLAN SHARES" (ESPP) and
+// "EQUITY AWARD SHARES" (RSU) sections from the Schwab Equity
+// Award Center export. Works for any company (not just Nvidia).
 // ═══════════════════════════════════════════════════════════════════
 function parseSchawbCSV(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
@@ -210,30 +505,24 @@ function parseSchawbCSV(text) {
     let i = esppIdx + 2;
     while (i < end) {
       const parts = parseCsvLine(lines[i]);
-      if (parts.length >= 8 && isMMDDYYYY(parts[0]) && parts[1] === 'NVDA') {
+      // Accept any symbol (not just NVDA)
+      if (parts.length >= 8 && isMMDDYYYY(parts[0]) && parts[1] && parts[1].toUpperCase() !== 'SYMBOL') {
         const dateAcquired  = mmddToISO(parts[0]);
         const purchasePrice = numOf(parts[4]);
         const sharesAvail   = intOf(parts[7]);
         const sharesTotal   = intOf(parts[6]);
 
-        // Schwab CSV structure per ESPP lot:
-        //   Line i:   lot summary  (Purchase Date, Symbol, Market Value, ...)
-        //   Line i+1: column header ("Date Holding Period Met,Symbol,Plan Id,...")
-        //   Line i+2: actual detail  (Qualified/date, Symbol, PlanId, SubDate, PurchDate, SubFMV, PurchFMV, PurchPrice)
-        // Detect column-header row by checking if next line contains "Plan Id"
         let detail = [];
         let step   = 2;
         const rawNext = i + 1 < end ? lines[i + 1] : '';
         if (rawNext.includes('Plan Id')) {
-          // i+1 is col-header, i+2 is actual data
           detail = i + 2 < end ? parseCsvLine(lines[i + 2]) : [];
           step   = 3;
         } else {
           detail = parseCsvLine(rawNext);
         }
 
-        // detail layout: [HoldingPeriodMet, Symbol, PlanId, SubDate, PurchDate, SubFMV, PurchFMV, PurchPrice]
-        // Use Purchase FMV (index 6) as capital-gain cost basis (discount already taxed as perquisite)
+        // Use Purchase FMV (index 6) as cost basis (discount already taxed as perquisite)
         let purchaseFMV = purchasePrice;
         if (detail.length >= 7) {
           const fmv = numOf(detail[6]);
@@ -241,7 +530,7 @@ function parseSchawbCSV(text) {
         }
 
         if (sharesAvail > 0 && dateAcquired) {
-          lots.push(mkLot('ESPP', 'NVDA', dateAcquired, purchaseFMV, purchasePrice, sharesAvail, sharesTotal));
+          lots.push(mkLot('ESPP', parts[1], dateAcquired, purchaseFMV, purchasePrice, sharesAvail, sharesTotal));
         }
         i += step;
       } else { i++; }
@@ -344,8 +633,9 @@ function renderCatSummary(currentPrice, todayINR, ltcgRate, stcgRate) {
   }).join('');
 }
 
+
 // ═══════════════════════════════════════════════════════════════════
-// RENDER
+// EQUITY AWARDS — RENDER
 // ═══════════════════════════════════════════════════════════════════
 function rerender() {
   if (!allLots.length) return;
@@ -368,10 +658,8 @@ function rerender() {
   allLots.forEach(lot => {
     const taxRate = lot.taxCategory === 'LTCG' ? ltcgRate : stcgRate;
     const pRate   = ratesMap[lot.dateAcquired]?.rate || todayINR;
-    // USD
     const val     = currentPrice * lot.sharesHeld;
     const gain    = (currentPrice - lot.acquisitionPrice) * lot.sharesHeld;
-    // INR: cost uses purchase-day rate, value uses today's rate
     const costINR_ = lot.acquisitionPrice * lot.sharesHeld * pRate;
     const valINR_  = currentPrice * lot.sharesHeld * todayINR;
     const gainINR_ = valINR_ - costINR_;
@@ -406,10 +694,8 @@ function rerender() {
   document.getElementById('sectionLabel').textContent =
     `${filtered.length} lot${filtered.length!==1?'s':''} · ${activeFilter==='all'?'All Holdings':activeFilter}`;
 
-  // ── RSU / ESPP category summary ───────────────────────────────────
   renderCatSummary(currentPrice, todayINR, ltcgRate, stcgRate);
 
-  // ── Lot cards ─────────────────────────────────────────────────────
   const wrap = document.getElementById('lotsWrap');
   if (!filtered.length) { wrap.innerHTML = '<div class="empty-state"><h3>No lots match the filter</h3></div>'; return; }
 
@@ -421,7 +707,6 @@ function rerender() {
     const gainUSD  = (currentPrice - lot.acquisitionPrice) * lot.sharesHeld;
     const gainPct  = lot.acquisitionPrice > 0 ? gainUSD / (lot.acquisitionPrice * lot.sharesHeld) * 100 : 0;
 
-    // INR calculations
     const costINR       = lot.acquisitionPrice * lot.sharesHeld * pRate;
     const valINR        = val * todayINR;
     const gainINR       = valINR - costINR;
@@ -432,15 +717,12 @@ function rerender() {
     const taxBase = currency === 'INR' ? Math.max(gainINR, 0) : Math.max(gainUSD, 0);
     const taxAmt  = taxBase * taxRate;
 
-    // STCG → LTCG projection
     const isSTCG = lot.taxCategory === 'STCG';
     const ltcgConvert = isSTCG ? ltcgDate(lot.dateAcquired) : null;
     const daysLeft    = isSTCG ? daysUntil(ltcgConvert) : 0;
     const taxAtLTCG   = taxBase * ltcgRate;
     const taxSaving   = taxAmt - taxAtLTCG;
 
-    // Shared: forex rate row (shown in BOTH modes)
-    // RBI-sourced rates are locked (read-only); EST/manual rates are editable
     const isLocked = src === 'rbi';
     const rateDisplay = isLocked
       ? `<span style="font-size:15px;font-weight:700">₹${pRate.toFixed(2)}</span>`
@@ -472,7 +754,6 @@ function rerender() {
         </div>
       </div>`;
 
-    // STCG → LTCG banner
     const ltcgBanner = isSTCG && daysLeft > 0 ? `
       <div class="ltcg-banner">
         <div class="ltcg-banner-top">
@@ -506,14 +787,9 @@ function rerender() {
 
     const gPos      = gainUSD >= 0;
     const gINRPos   = gainINR >= 0;
-    // INR gain % uses INR cost as base (not USD cost)
     const gainPctINR = costINR > 0 ? gainINR / costINR * 100 : 0;
-
-    // Per-share INR values
-    const vestPriceINR    = lot.acquisitionPrice * pRate;   // $X.XX × ₹Y.YY
-    const currentPriceINR = currentPrice * todayINR;        // $X.XX × ₹Y.YY
-    // Total value formula: shares × currentPrice($) × todayINR
-    // valINR = lot.sharesHeld × currentPrice × todayINR  (already computed above)
+    const vestPriceINR    = lot.acquisitionPrice * pRate;
+    const currentPriceINR = currentPrice * todayINR;
 
     if (currency === 'USD') {
       return `<div class="lot-card">
@@ -578,7 +854,6 @@ function rerender() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  // Initialize landing panel with default US market selection
   renderPlatformCards();
   updateUploads();
 });
