@@ -68,14 +68,34 @@ function updateUploads() {
   if (activePlatforms.has('indmoney')) syncImSubTabs();
 }
 
+function getPlatformWarning() {
+  const hasUs    = selectedMarkets.has('us');
+  const hasIndia = selectedMarkets.has('india');
+  const usPlatforms     = ['schwab', 'indmoney'];
+  const indiaPlatforms  = ['zerodha', 'groww', 'indmoney'];
+  const missingUs    = hasUs    && !usPlatforms.some(p   => activePlatforms.has(p));
+  const missingIndia = hasIndia && !indiaPlatforms.some(p => activePlatforms.has(p));
+  if (missingUs && missingIndia) return 'Please select at least one platform for US market (Schwab or IndMoney) and one for India market (Zerodha, Groww, or IndMoney).';
+  if (missingUs)    return 'US market selected — please choose at least one platform: Charles Schwab or IndMoney.';
+  if (missingIndia) return 'India market selected — please choose at least one platform: Zerodha, Groww, or IndMoney.';
+  return null;
+}
+
 function updateAnalyzeAllBtn() {
+  const warning = getPlatformWarning();
+  const warnEl  = document.getElementById('platformWarning');
+  if (warnEl) {
+    warnEl.style.display = warning ? '' : 'none';
+    warnEl.textContent   = warning || '';
+  }
+
   let hasData = false;
   if (activePlatforms.has('schwab') && (typeof pendingLots !== 'undefined' && pendingLots)) hasData = true;
   if (activePlatforms.has('indmoney') && ((typeof imRawFiles !== 'undefined' && imRawFiles.us.cg) ||
       (typeof imInRawFiles !== 'undefined' && Object.values(imInRawFiles).some(s => s.trades && s.trades.length > 0)))) hasData = true;
   if (activePlatforms.has('zerodha') && typeof zRawFiles !== 'undefined' && Object.values(zRawFiles).some(s => s.trades.length > 0)) hasData = true;
   if (activePlatforms.has('groww') && typeof gRawFiles !== 'undefined' && Object.values(gRawFiles).some(s => s.trades.length > 0)) hasData = true;
-  document.getElementById('analyzeAllBtn').disabled = !hasData;
+  document.getElementById('analyzeAllBtn').disabled = !hasData || !!warning;
 }
 
 function togglePfup(p) {
