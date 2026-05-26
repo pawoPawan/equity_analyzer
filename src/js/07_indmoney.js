@@ -1046,7 +1046,7 @@ function rerenderImIndia() {
     document.getElementById('imInOpenMeta').textContent =
       `${eqOpen.length} stocks · ${fINR(eqOpen.reduce((s,[,l])=>s+l.reduce((a,x)=>a+x.qty*x.price,0),0),true)} cost${segCov('eq')}`;
     document.getElementById('imInOpenCards').innerHTML =
-      eqOpen.map(([sym,lots]) => buildOpenCard(sym,lots,false)).join('') || emptyMsg('No open equity positions');
+      eqOpen.map(([sym,lots]) => buildOpenCard(sym,lots,false,{ltcgRateId:'imLtcgRate',stcgRateId:'imStcgRate'})).join('') || emptyMsg('No open equity positions');
   }
 
   // ── Intraday ───────────────────────────────────────────────────────
@@ -1079,7 +1079,7 @@ function rerenderImIndia() {
     let html = '';
     if (mfHold.length) {
       html += `<div style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;margin:8px 2px 6px">Holdings</div>`;
-      html += mfHold.map(([sym,lots]) => buildOpenCard(sym,lots,true)).join('');
+      html += mfHold.map(([sym,lots]) => buildOpenCard(sym,lots,true,{ltcgRateId:'imLtcgRate',stcgRateId:'imStcgRate'})).join('');
     }
     if (Object.keys(mfGroups).length) {
       html += `<div style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;margin:12px 2px 6px">Realized</div>`;

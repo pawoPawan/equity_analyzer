@@ -48,10 +48,10 @@ function parseCsvLine(line) {
   return result;
 }
 
-function isMMDDYYYY(s) { return /^\d{2}-\d{2}-\d{4}$/.test(s); }
+function isMMDDYYYY(s) { return /^\d{2}[\/\-]\d{2}[\/\-]\d{4}$/.test(s); }
 function mmddToISO(s) {
   s = s.replace(/"/g,'').trim();
-  const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  const m = s.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
   return m ? `${m[3]}-${m[1]}-${m[2]}` : (/^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null);
 }
 function numOf(s) { return parseFloat((s||'').replace(/[$,]/g,'')) || 0; }

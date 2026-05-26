@@ -407,7 +407,7 @@ function rerenderGroww() {
     document.getElementById('gOpenMeta').textContent =
       `${eqOpen.length} stock${eqOpen.length!==1?'s':''} · ${fINR(eqOpen.reduce((s,[,l])=>s+l.reduce((a,x)=>a+x.qty*x.price,0),0),true)} cost${segCoverage('eq')}`;
     document.getElementById('gOpenCards').innerHTML =
-      eqOpen.map(([sym,lots]) => buildOpenCard(sym,lots,false)).join('')
+      eqOpen.map(([sym,lots]) => buildOpenCard(sym,lots,false,{ltcgRateId:'gLtcgRate',stcgRateId:'gStcgRate'})).join('')
       || emptyMsg('No open equity positions');
   }
 
@@ -446,7 +446,7 @@ function rerenderGroww() {
     let mfHTML = '';
     if (mfHoldings.length) {
       mfHTML += `<div style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;margin:8px 2px 6px">Holdings</div>`;
-      mfHTML += mfHoldings.map(([sym,lots]) => buildOpenCard(sym,lots,true)).join('');
+      mfHTML += mfHoldings.map(([sym,lots]) => buildOpenCard(sym,lots,true,{ltcgRateId:'gLtcgRate',stcgRateId:'gStcgRate'})).join('');
     }
     if (Object.keys(mfSymGroups).length) {
       mfHTML += `<div style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;margin:12px 2px 6px">Realized</div>`;

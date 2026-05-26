@@ -210,6 +210,11 @@ function runAnalysisAll() {
     showMainUI();
     document.getElementById('pra_schwab').style.display = 'block';
     hasResults = true;
+  } else if (activePlatforms.has('schwab') && schwabRDataReady) {
+    showSchwabRetailUI();
+    document.getElementById('pra_schwab').style.display = 'block';
+    rerenderSchwabRetail();
+    hasResults = true;
   }
 
   if (activePlatforms.has('indmoney')) {

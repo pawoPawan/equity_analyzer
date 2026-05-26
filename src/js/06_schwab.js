@@ -433,7 +433,7 @@ function rerenderSchwabRetail() {
   document.getElementById('schwabROpenMeta').textContent =
     `${openEntries.length} symbol${openEntries.length !== 1 ? 's' : ''} · ${openShares.toLocaleString()} shares`;
   document.getElementById('schwabROpenCards').innerHTML =
-    openEntries.map(([sym, lots]) => buildOpenCard(sym, lots, false)).join('');
+    openEntries.map(([sym, lots]) => buildOpenCard(sym, lots, false, { ltcgDays: 730, ltcgRateId: 'schwabRLtcgRate', stcgRateId: 'schwabRStcgRate' })).join('');
   document.getElementById('schwabROpenSection').style.display = openEntries.length ? '' : 'none';
 
   // ── Intraday ──────────────────────────────────────────────────────

@@ -22,18 +22,24 @@ function toggleRealCard(cid, icoId) {
   ico.textContent    = open ? '▶' : '▼';
 }
 
-function buildOpenCard(sym, lots, isMf) {
+const _openCalcMeta = {}; // symId → { lots, ltcgDays, ltcgRateId, stcgRateId }
+
+function buildOpenCard(sym, lots, isMf, opts) {
+  const ltcgDays   = (opts && opts.ltcgDays)   || 365;
+  const ltcgRateId = (opts && opts.ltcgRateId) || 'zLtcgRate';
+  const stcgRateId = (opts && opts.stcgRateId) || 'zStcgRate';
   const totalQty  = lots.reduce((s,l) => s+l.qty, 0);
   const costBasis = lots.reduce((s,l) => s+l.qty*l.price, 0);
   const avgCost   = costBasis / totalQty;
   const symId     = sym.replace(/[^a-zA-Z0-9]/g,'_');
+  _openCalcMeta[symId] = { lots, ltcgDays, ltcgRateId, stcgRateId };
 
   const lotRows = lots.map((lot,i) => {
     const holdDays  = Math.floor((new Date(TODAY) - new Date(lot.date+'T00:00:00')) / 86400000);
-    const isLTCG    = holdDays >= 365;
-    const daysLeft  = 365 - holdDays;
+    const isLTCG    = holdDays >= ltcgDays;
+    const daysLeft  = ltcgDays - holdDays;
     const ltcgOn    = new Date(lot.date+'T00:00:00');
-    ltcgOn.setDate(ltcgOn.getDate() + 365);
+    ltcgOn.setDate(ltcgOn.getDate() + ltcgDays);
     const ltcgOnStr = ltcgOn.toISOString().split('T')[0];
     return `<div class="z-open-lot">
       <div class="z-lot-row">
@@ -75,10 +81,11 @@ function updateOpenCalc(symId, sym, priceStr) {
   const price = parseFloat(priceStr);
   if (!price || price <= 0) { el.innerHTML = ''; return; }
 
-  const lots      = zOpen[sym];
-  if (!lots) return;
-  const ltcgRate  = (parseFloat(document.getElementById('zLtcgRate').value) || 12.5) / 100;
-  const stcgRate  = (parseFloat(document.getElementById('zStcgRate').value) || 20)   / 100;
+  const meta = _openCalcMeta[symId];
+  if (!meta) return;
+  const { lots, ltcgDays, ltcgRateId, stcgRateId } = meta;
+  const ltcgRate  = (parseFloat(document.getElementById(ltcgRateId).value) || 12.5) / 100;
+  const stcgRate  = (parseFloat(document.getElementById(stcgRateId).value) || 20)   / 100;
   const EXEMPT    = 125000;
 
   let stcgGain = 0, ltcgGain = 0;
@@ -86,12 +93,12 @@ function updateOpenCalc(symId, sym, priceStr) {
   lots.forEach(lot => {
     const holdDays = Math.floor((new Date(TODAY) - new Date(lot.date+'T00:00:00')) / 86400000);
     const gain     = (price - lot.price) * lot.qty;
-    if (holdDays >= 365) { ltcgGain += gain; }
+    if (holdDays >= ltcgDays) { ltcgGain += gain; }
     else {
       stcgGain += gain;
-      const daysLeft = 365 - holdDays;
+      const daysLeft = ltcgDays - holdDays;
       const ltcgOn = new Date(lot.date+'T00:00:00');
-      ltcgOn.setDate(ltcgOn.getDate() + 365);
+      ltcgOn.setDate(ltcgOn.getDate() + ltcgDays);
       stcgLots.push({ lot, gain, daysLeft, ltcgOnStr: ltcgOn.toISOString().split('T')[0] });
     }
   });
@@ -142,7 +149,7 @@ function updateOpenCalc(symId, sym, priceStr) {
       return `<div class="z-calc-saving">⏳ <strong>STCG → LTCG schedule</strong> — total saving: <strong>${fINR(taxSaving,true)}</strong> (pay ${fINR(taxIfWait,true)} instead of ${fINR(totalTaxNow,true)}):${lotLines}</div>`;
     })() : ''}
     <hr class="z-calc-divider">
-    <div style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Zerodha Platform Fees</div>
+    <div style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Platform Fees</div>
     <div class="z-calc-row z-fee-row"><span>STT — 0.1% on sell</span><span>${fINR(stt)}</span></div>
     <div class="z-calc-row z-fee-row"><span>Exchange charges — NSE 0.00297%</span><span>${fINR(exchCharge)}</span></div>
     <div class="z-calc-row z-fee-row"><span>GST — 18% on exchange charges</span><span>${fINR(gst)}</span></div>
