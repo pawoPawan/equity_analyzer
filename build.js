@@ -36,4 +36,5 @@ out = safeReplace(out, '{{RESULTS}}', results);
 out = safeReplace(out, '{{JS}}',      jsFiles);
 
 fs.writeFileSync('equity-analyzer.html', out);
-console.log('Built equity-analyzer.html (' + out.split('\n').length + ' lines)');
+fs.writeFileSync('index.html', out);
+console.log('Built equity-analyzer.html + index.html (' + out.split('\n').length + ' lines)');
